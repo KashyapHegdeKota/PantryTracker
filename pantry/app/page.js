@@ -15,6 +15,8 @@ import {
   setDoc,
   doc,
   deleteDoc,
+  count,
+  getDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { update } from "firebase/database";
@@ -44,7 +46,7 @@ export default function Home() {
     const docs = await getDocs(snapshot);
     const pantryList = [];
     docs.forEach((doc) => {
-      pantryList.push(doc.id);
+      pantryList.push({ name: doc.id, ...doc.data() });
     });
     console.log(pantryList);
     setPantry(pantryList);
@@ -55,8 +57,16 @@ export default function Home() {
 
   const addItem = async (item) => {
     const docRef = doc(collection(firestore, "pantry"), item);
-    await setDoc(docRef, {});
-    updatePantry();
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const { count } = docSnap.data();
+      await setDoc(docRef, { count: count + 1 });
+      await updatePantry();
+      return;
+    } else {
+      await setDoc(docRef, { count: 1 });
+      await updatePantry();
+    }
   };
 
   const removeItem = async (item) => {
@@ -122,9 +132,9 @@ export default function Home() {
           </Typography>
         </Box>
         <Stack width="800px" height="200px" spacing={2} overflow={"auto"}>
-          {pantry.map((i) => (
+          {pantry.map(({ name, count }) => (
             <Box
-              key={i}
+              key={name}
               width="100%"
               minHeight="300px"
               display={"flex"}
@@ -134,9 +144,12 @@ export default function Home() {
               paddingX={5}
             >
               <Typography variant={"h3"} color={"#333"} textAlign={"center"}>
-                {i.charAt(0).toUpperCase() + i.slice(1)}
+                {name.charAt(0).toUpperCase() + name.slice(1)}
               </Typography>
-              <Button variant="contained" onClick={() => removeItem(i)}>
+              <Typography variant={"h3"} color={"#333"} textAlign={"center"}>
+                Quantity: {count}
+              </Typography>
+              <Button variant="contained" onClick={() => removeItem(name)}>
                 Remove
               </Button>
             </Box>
