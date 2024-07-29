@@ -19,7 +19,6 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { update } from "firebase/database";
 const style = {
   position: "absolute",
   top: "50%",
