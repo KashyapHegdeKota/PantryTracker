@@ -15,10 +15,10 @@ import {
   setDoc,
   doc,
   deleteDoc,
-  count,
   getDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+
 const style = {
   position: "absolute",
   top: "50%",
@@ -37,9 +37,12 @@ const style = {
 export default function Home() {
   const [pantry, setPantry] = useState([]);
   const [open, setOpen] = useState(false);
+  const [itemName, setItemName] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
-  const [itemName, setItemName] = useState("");
+
   const updatePantry = async () => {
     const snapshot = query(collection(firestore, "pantry"));
     const docs = await getDocs(snapshot);
@@ -47,9 +50,9 @@ export default function Home() {
     docs.forEach((doc) => {
       pantryList.push({ name: doc.id, ...doc.data() });
     });
-    console.log(pantryList);
     setPantry(pantryList);
   };
+
   useEffect(() => {
     updatePantry();
   }, []);
@@ -60,19 +63,30 @@ export default function Home() {
     if (docSnap.exists()) {
       const { count } = docSnap.data();
       await setDoc(docRef, { count: count + 1 });
-      await updatePantry();
-      return;
     } else {
       await setDoc(docRef, { count: 1 });
-      await updatePantry();
     }
+    await updatePantry();
   };
 
   const removeItem = async (item) => {
     const docRef = doc(collection(firestore, "pantry"), item);
-    await deleteDoc(docRef);
-    updatePantry();
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const { count } = docSnap.data();
+      if (count > 1) {
+        await setDoc(docRef, { count: count - 1 });
+      } else {
+        await deleteDoc(docRef);
+      }
+    }
+    await updatePantry();
   };
+
+  const filteredPantry = pantry.filter(({ name }) =>
+    name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <Box
       width="100vw"
@@ -118,6 +132,14 @@ export default function Home() {
       <Button variant="contained" onClick={handleOpen}>
         Add
       </Button>
+      <TextField
+        width="100px"
+        id="search-field"
+        label="Search Items"
+        variant="outlined"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
       <Box border={"1px solid #333"}>
         <Box
           width="800px"
@@ -131,7 +153,7 @@ export default function Home() {
           </Typography>
         </Box>
         <Stack width="800px" height="200px" spacing={2} overflow={"auto"}>
-          {pantry.map(({ name, count }) => (
+          {filteredPantry.map(({ name, count }) => (
             <Box
               key={name}
               width="100%"
