@@ -7,7 +7,13 @@ import {
   Modal,
   TextField,
 } from "@mui/material";
-import { firestore } from "@/firebase";
+import {
+  firestore,
+  auth,
+  signInWithPopup,
+  provider,
+  signOut,
+} from "@/firebase";
 import {
   collection,
   getDocs,
@@ -18,6 +24,8 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import Login from "./login";
 
 const style = {
   position: "absolute",
@@ -39,26 +47,41 @@ export default function Home() {
   const [open, setOpen] = useState(false);
   const [itemName, setItemName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [user, setUser] = useState(null);
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
   const updatePantry = async () => {
-    const snapshot = query(collection(firestore, "pantry"));
-    const docs = await getDocs(snapshot);
-    const pantryList = [];
-    docs.forEach((doc) => {
-      pantryList.push({ name: doc.id, ...doc.data() });
-    });
-    setPantry(pantryList);
+    if (user) {
+      const snapshot = query(
+        collection(firestore, "users", user.uid, "pantry")
+      );
+      const docs = await getDocs(snapshot);
+      const pantryList = [];
+      docs.forEach((doc) => {
+        pantryList.push({ name: doc.id, ...doc.data() });
+      });
+      setPantry(pantryList);
+    }
   };
 
   useEffect(() => {
-    updatePantry();
+    onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        updatePantry();
+      } else {
+        setUser(null);
+      }
+    });
   }, []);
 
   const addItem = async (item) => {
-    const docRef = doc(collection(firestore, "pantry"), item);
+    const docRef = doc(
+      collection(firestore, "users", user.uid, "pantry"),
+      item
+    );
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const { count } = docSnap.data();
@@ -70,7 +93,10 @@ export default function Home() {
   };
 
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, "pantry"), item);
+    const docRef = doc(
+      collection(firestore, "users", user.uid, "pantry"),
+      item
+    );
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const { count } = docSnap.data();
@@ -86,6 +112,10 @@ export default function Home() {
   const filteredPantry = pantry.filter(({ name }) =>
     name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (!user) {
+    return <Login />;
+  }
 
   return (
     <Box
@@ -131,6 +161,13 @@ export default function Home() {
       </Modal>
       <Button variant="contained" onClick={handleOpen}>
         Add
+      </Button>
+      <Button
+        variant="contained"
+        color="secondary"
+        onClick={() => signOut(auth)}
+      >
+        Sign Out
       </Button>
       <TextField
         width="100px"
