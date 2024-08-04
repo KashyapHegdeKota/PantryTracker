@@ -10,7 +10,7 @@ import {
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: process.env.apiKey,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: "hspantryapp-fc815.firebaseapp.com",
   projectId: "hspantryapp-fc815",
   storageBucket: "hspantryapp-fc815.appspot.com",

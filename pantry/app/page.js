@@ -1,4 +1,6 @@
 "use client";
+import axios from "axios";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Stack,
@@ -6,7 +8,9 @@ import {
   Button,
   Modal,
   TextField,
+  IconButton,
 } from "@mui/material";
+import { PhotoCamera } from "@mui/icons-material";
 import {
   firestore,
   auth,
@@ -23,9 +27,8 @@ import {
   deleteDoc,
   getDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import Login from "./login";
+import Login from "@/app/components/login";
 
 const style = {
   position: "absolute",
@@ -53,60 +56,126 @@ export default function Home() {
   const handleClose = () => setOpen(false);
 
   const updatePantry = async () => {
-    if (user) {
-      const snapshot = query(
-        collection(firestore, "users", user.uid, "pantry")
-      );
-      const docs = await getDocs(snapshot);
-      const pantryList = [];
-      docs.forEach((doc) => {
-        pantryList.push({ name: doc.id, ...doc.data() });
-      });
-      setPantry(pantryList);
+    try {
+      if (user) {
+        console.log("Updating pantry for user: ", user.uid);
+        const snapshot = query(
+          collection(firestore, "users", user.uid, "pantry")
+        );
+        const docs = await getDocs(snapshot);
+
+        if (docs.empty) {
+          console.log("No pantry items found for user: ", user.uid);
+          setPantry([]);
+        } else {
+          console.log(
+            "Pantry documents: ",
+            docs.docs.map((doc) => doc.data())
+          );
+          const pantryList = docs.docs.map((doc) => ({
+            name: doc.id,
+            ...doc.data(),
+          }));
+          console.log("Pantry list: ", pantryList);
+          setPantry(pantryList);
+        }
+      }
+    } catch (error) {
+      console.error("Error updating pantry: ", error);
     }
   };
 
   useEffect(() => {
-    onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
+        console.log("User logged in: ", currentUser);
         setUser(currentUser);
         updatePantry();
       } else {
+        console.log("No user logged in");
         setUser(null);
       }
     });
+    return () => unsubscribe();
   }, []);
 
   const addItem = async (item) => {
-    const docRef = doc(
-      collection(firestore, "users", user.uid, "pantry"),
-      item
-    );
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const { count } = docSnap.data();
-      await setDoc(docRef, { count: count + 1 });
-    } else {
-      await setDoc(docRef, { count: 1 });
+    try {
+      const docRef = doc(
+        collection(firestore, "users", user.uid, "pantry"),
+        item
+      );
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const { count } = docSnap.data();
+        await setDoc(docRef, { count: count + 1 });
+      } else {
+        await setDoc(docRef, { count: 1 });
+      }
+      await updatePantry();
+    } catch (error) {
+      console.error("Error adding item: ", error);
     }
-    await updatePantry();
   };
 
   const removeItem = async (item) => {
-    const docRef = doc(
-      collection(firestore, "users", user.uid, "pantry"),
-      item
-    );
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const { count } = docSnap.data();
-      if (count > 1) {
-        await setDoc(docRef, { count: count - 1 });
-      } else {
-        await deleteDoc(docRef);
+    try {
+      const docRef = doc(
+        collection(firestore, "users", user.uid, "pantry"),
+        item
+      );
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const { count } = docSnap.data();
+        if (count > 1) {
+          await setDoc(docRef, { count: count - 1 });
+        } else {
+          await deleteDoc(docRef);
+        }
       }
+      await updatePantry();
+    } catch (error) {
+      console.error("Error removing item: ", error);
     }
-    await updatePantry();
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64String = reader.result.split(",")[1];
+        const image = {
+          data: base64String,
+          mimeType: file.type,
+        };
+
+        try {
+          const response = await axios.post(
+            "/api/generate",
+            { image },
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          const result = response.data;
+          const itemName = result.response.text;
+          if (itemName) {
+            await addItem(itemName);
+          }
+        } catch (error) {
+          console.error("Error uploading image: ", error);
+        }
+      };
+    } catch (error) {
+      console.error("Error reading file: ", error);
+    }
   };
 
   const filteredPantry = pantry.filter(({ name }) =>
@@ -177,6 +246,22 @@ export default function Home() {
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
       />
+      <input
+        accept="image/*"
+        style={{ display: "none" }}
+        id="icon-button-file"
+        type="file"
+        onChange={handleImageUpload}
+      />
+      <label htmlFor="icon-button-file">
+        <IconButton
+          color="primary"
+          aria-label="upload picture"
+          component="span"
+        >
+          <PhotoCamera />
+        </IconButton>
+      </label>
       <Box border={"1px solid #333"}>
         <Box
           width="800px"
@@ -201,15 +286,18 @@ export default function Home() {
               bgcolor={"#f0f0f0"}
               paddingX={5}
             >
-              <Typography variant={"h3"} color={"#333"} textAlign={"center"}>
-                {name.charAt(0).toUpperCase() + name.slice(1)}
+              <Typography variant={"h3"} color={"#333"}>
+                {name} - {count}
               </Typography>
-              <Typography variant={"h3"} color={"#333"} textAlign={"center"}>
-                Quantity: {count}
-              </Typography>
-              <Button variant="contained" onClick={() => removeItem(name)}>
-                Remove
-              </Button>
+              <Stack direction={"row"} spacing={2}>
+                <Button
+                  onClick={() => {
+                    removeItem(name);
+                  }}
+                >
+                  Remove
+                </Button>
+              </Stack>
             </Box>
           ))}
         </Stack>
