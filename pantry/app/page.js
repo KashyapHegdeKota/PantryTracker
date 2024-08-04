@@ -45,15 +45,33 @@ const style = {
   gap: 3,
 };
 
+const editStyle = {
+  ...style,
+  width: 300,
+};
+
 export default function Home() {
   const [pantry, setPantry] = useState([]);
   const [open, setOpen] = useState(false);
   const [itemName, setItemName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [currentItem, setCurrentItem] = useState(null);
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
+  const handleEditOpen = (item) => {
+    setCurrentItem({
+      ...item,
+      originalName: item.name, // Store the original name for comparison
+    });
+    setEditOpen(true);
+  };
+  const handleEditClose = () => {
+    setCurrentItem(null);
+    setEditOpen(false);
+  };
 
   const updatePantry = async () => {
     try {
@@ -178,12 +196,49 @@ export default function Home() {
     }
   };
 
+  const handleEditItem = async () => {
+    try {
+      const { name, count } = currentItem;
+
+      // Handle case where item name might change
+      if (currentItem.originalName !== name) {
+        // Delete the old item
+        const oldDocRef = doc(
+          collection(firestore, "users", user.uid, "pantry"),
+          currentItem.originalName
+        );
+        await deleteDoc(oldDocRef);
+
+        // Add the new item with updated name
+        const newDocRef = doc(
+          collection(firestore, "users", user.uid, "pantry"),
+          name
+        );
+        await setDoc(newDocRef, { count });
+      } else {
+        // Update the count of the existing item
+        const docRef = doc(
+          collection(firestore, "users", user.uid, "pantry"),
+          name
+        );
+        await setDoc(docRef, { count });
+      }
+
+      await updatePantry();
+      handleEditClose();
+    } catch (error) {
+      console.error("Error updating item: ", error);
+    }
+  };
+
   const filteredPantry = pantry.filter(({ name }) =>
     name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (!user) {
     return <Login />;
+  } else {
+    updatePantry();
   }
 
   return (
@@ -228,6 +283,49 @@ export default function Home() {
           </Stack>
         </Box>
       </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={handleEditClose}
+        aria-labelledby="edit-modal-title"
+        aria-describedby="edit-modal-description"
+      >
+        <Box sx={editStyle}>
+          <Typography id="edit-modal-title" variant="h6" component="h2">
+            Edit Item
+          </Typography>
+          <Stack width={"100%"} direction={"column"} spacing={2}>
+            <TextField
+              id="edit-item-name"
+              label="Item Name"
+              variant="outlined"
+              fullWidth
+              value={currentItem?.name || ""}
+              onChange={(e) =>
+                setCurrentItem({ ...currentItem, name: e.target.value })
+              }
+            />
+            <TextField
+              id="edit-item-count"
+              label="Quantity"
+              variant="outlined"
+              type="number"
+              fullWidth
+              value={currentItem?.count || ""}
+              onChange={(e) =>
+                setCurrentItem({
+                  ...currentItem,
+                  count: parseInt(e.target.value, 10),
+                })
+              }
+            />
+            <Button variant="outlined" onClick={handleEditItem}>
+              Save
+            </Button>
+          </Stack>
+        </Box>
+      </Modal>
+
       <Button variant="contained" onClick={handleOpen}>
         Add
       </Button>
@@ -290,12 +388,10 @@ export default function Home() {
                 {name} - {count}
               </Typography>
               <Stack direction={"row"} spacing={2}>
-                <Button
-                  onClick={() => {
-                    removeItem(name);
-                  }}
-                >
-                  Remove
+                <Button onClick={() => removeItem(name)}>-</Button>
+                <Button onClick={() => addItem(name)}>+</Button>
+                <Button onClick={() => handleEditOpen({ name, count })}>
+                  Edit
                 </Button>
               </Stack>
             </Box>
